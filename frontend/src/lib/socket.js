@@ -9,7 +9,8 @@ export function getSocket() {
 export function connectSocket(token) {
   if (socket?.connected) return socket
 
-  socket = io('http://localhost:5001', {
+  const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001'
+  socket = io(SOCKET_URL, {
     auth: { token },
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
