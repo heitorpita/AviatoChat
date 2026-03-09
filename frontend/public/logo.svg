@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Fuselagem principal -->
+  <path d="M8 32 L52 16 L48 32 L52 48 Z" fill="#ffb703" stroke="#fb8500" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Asa superior -->
+  <path d="M24 28 L44 18 L40 30 Z" fill="#8ecae6" opacity="0.9"/>
+  <!-- Asa inferior -->
+  <path d="M24 36 L44 46 L40 34 Z" fill="#8ecae6" opacity="0.9"/>
+  <!-- Cauda -->
+  <path d="M8 32 L16 24 L20 32 L16 40 Z" fill="#219ebc"/>
+  <!-- Janelas -->
+  <circle cx="36" cy="30" r="2" fill="#023047" opacity="0.6"/>
+  <circle cx="30" cy="31" r="2" fill="#023047" opacity="0.6"/>
+</svg>
