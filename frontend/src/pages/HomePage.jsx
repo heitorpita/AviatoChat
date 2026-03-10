@@ -41,7 +41,7 @@ export default function HomePage() {
               <Users className="w-4 h-4 mr-2" />
               Meus Amigos
             </Button>
-            <Button variant="outline" className="border-white text-white hover:bg-white/10" onClick={() => navigate('/chat')}>
+            <Button className="border-white text-white hover:bg-white/10" onClick={() => navigate('/chat')}>
               <MessageSquare className="w-4 h-4 mr-2" />
               Ver Conversas
             </Button>
