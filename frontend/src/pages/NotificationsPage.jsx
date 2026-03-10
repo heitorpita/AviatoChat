@@ -1,91 +1,80 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, X, Bell } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { getPendingRequests } from '../api/friends.api'
-import { acceptFriendRequest, rejectFriendRequest } from '../api/friends.api'
-import { Avatar } from '../components/ui/Avatar'
-import { Button } from '../components/ui/Button'
+import { Button } from '@/components/ui/button'
+import { Check, X, Bell, Loader2 } from 'lucide-react'
+import { getPendingRequests, acceptFriendRequest, rejectFriendRequest } from '@/api/friends.api'
 
 export default function NotificationsPage() {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
 
-  const { data: requests = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['pending-requests'],
-    queryFn: () => getPendingRequests().then((r) => r.data.solicitacoes),
+    queryFn: () => getPendingRequests().then((r) => r.data),
   })
 
   const accept = useMutation({
     mutationFn: (id) => acceptFriendRequest(id),
     onSuccess: () => {
-      toast.success('Amizade aceita!')
-      qc.invalidateQueries(['pending-requests'])
-      qc.invalidateQueries(['friends'])
+      queryClient.invalidateQueries({ queryKey: ['pending-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['friends'] })
     },
-    onError: () => toast.error('Erro ao aceitar'),
   })
 
   const reject = useMutation({
     mutationFn: (id) => rejectFriendRequest(id),
-    onSuccess: () => {
-      toast.success('Solicitação rejeitada.')
-      qc.invalidateQueries(['pending-requests'])
-    },
-    onError: () => toast.error('Erro ao rejeitar'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pending-requests'] }),
   })
 
-  if (isLoading) return <div className="p-8 text-brand-sky">Carregando…</div>
+  const requests = data?.solicitacoes || []
 
   return (
-    <div className="p-8 max-w-2xl">
-      <div className="flex items-center gap-3 mb-8">
-        <Bell size={22} className="text-brand-amber" />
-        <h1 className="text-2xl font-bold text-white">Notificações</h1>
-        {requests.length > 0 && (
-          <span className="px-2 py-0.5 rounded-full bg-brand-orange text-white text-xs font-bold">
-            {requests.length}
-          </span>
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-foreground mb-6">Notificações</h1>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center p-16">
+            <Loader2 className="w-8 h-8 animate-spin text-[#219ebc]" />
+          </div>
+        ) : requests.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground bg-card rounded-xl border border-border">
+            <Bell className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p>Nenhuma solicitação pendente.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {requests.map((req) => (
+              <div key={req.id} className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border">
+                <div className="shrink-0">
+                  {req.sender?.profilePic ? (
+                    <img src={req.sender.profilePic} alt={req.sender.fullName} className="w-12 h-12 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#219ebc] flex items-center justify-center text-white font-bold">
+                      {req.sender?.fullName?.[0]?.toUpperCase()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground">{req.sender?.fullName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {req.sender?.nativeLanguage} → {req.sender?.learningLanguage}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Quer ser seu amigo</p>
+                </div>
+
+                <div className="flex gap-2 shrink-0">
+                  <Button size="sm" className="bg-[#10b981] hover:bg-green-600 text-white" onClick={() => accept.mutate(req.id)} disabled={accept.isPending}>
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-red-500 hover:bg-red-50 border-red-200" onClick={() => reject.mutate(req.id)} disabled={reject.isPending}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-
-      {requests.length === 0 ? (
-        <div className="text-center py-20 text-brand-sky">
-          <Bell size={40} className="mx-auto mb-3 opacity-30" />
-          <p>Sem notificações no momento.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {requests.map((req) => (
-            <div key={req.id} className="bg-white/5 border border-brand-teal/20 rounded-2xl p-4 flex items-center gap-4">
-              <Avatar usuario={req.sender} size="md" />
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold">{req.sender?.fullName}</p>
-                <p className="text-brand-sky text-xs">
-                  {req.sender?.nativeLanguage} → {req.sender?.learningLanguage}
-                </p>
-                <p className="text-brand-sky/50 text-xs mt-0.5">Quer ser seu amigo</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => accept.mutate(req.id)}
-                  disabled={accept.isPending}
-                  className="w-10 h-10 rounded-xl bg-green-500/20 hover:bg-green-500 flex items-center justify-center transition-colors"
-                  title="Aceitar"
-                >
-                  <Check size={18} className="text-green-400" />
-                </button>
-                <button
-                  onClick={() => reject.mutate(req.id)}
-                  disabled={reject.isPending}
-                  className="w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500 flex items-center justify-center transition-colors"
-                  title="Rejeitar"
-                >
-                  <X size={18} className="text-red-400" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

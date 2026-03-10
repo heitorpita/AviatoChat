@@ -1,70 +1,69 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Phone, PhoneOff } from 'lucide-react'
-import { useSocketStore } from '../store/socket.store'
-import { Button } from './ui/Button'
+import { useSocketStore } from '@/store/socket.store'
+import { useQueryClient } from '@tanstack/react-query'
 
-export function IncomingCallModal() {
-  const socket = useSocketStore((s) => s.socket)
+export default function IncomingCallModal() {
+  const { socket } = useSocketStore()
   const navigate = useNavigate()
-  const [caller, setCaller] = useState(null)
+  const queryClient = useQueryClient()
+  const [incomingCall, setIncomingCall] = useState(null) // { callerId }
 
   useEffect(() => {
     if (!socket) return
 
-    const onIncoming = ({ callerId }) => {
-      setCaller({ callerId })
-    }
+    socket.on('call:incoming', ({ callerId }) => {
+      const friends = queryClient.getQueryData(['friends'])?.amigos || []
+      const caller = friends.find((f) => f.id === callerId)
+      setIncomingCall({ callerId, callerName: caller?.fullName || 'Alguém' })
+    })
 
-    const onEnded = () => setCaller(null)
-    const onRejected = () => setCaller(null)
-
-    socket.on('call:incoming', onIncoming)
-    socket.on('call:ended', onEnded)
-    socket.on('call:rejected', onRejected)
+    socket.on('call:ended', () => setIncomingCall(null))
+    socket.on('call:rejected', () => setIncomingCall(null))
 
     return () => {
-      socket.off('call:incoming', onIncoming)
-      socket.off('call:ended', onEnded)
-      socket.off('call:rejected', onRejected)
+      socket.off('call:incoming')
+      socket.off('call:ended')
+      socket.off('call:rejected')
     }
   }, [socket])
 
-  if (!caller) return null
-
-  const accept = () => {
-    socket?.emit('call:accept', { callerId: caller.callerId })
-    navigate(`/call/${caller.callerId}`)
-    setCaller(null)
+  function accept() {
+    socket?.emit('call:accept', { callerId: incomingCall.callerId })
+    setIncomingCall(null)
+    navigate(`/call/${incomingCall.callerId}?caller=false`)
   }
 
-  const reject = () => {
-    socket?.emit('call:reject', { callerId: caller.callerId })
-    setCaller(null)
+  function reject() {
+    socket?.emit('call:reject', { callerId: incomingCall.callerId })
+    setIncomingCall(null)
   }
+
+  if (!incomingCall) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-brand-navy border border-brand-teal/40 rounded-2xl p-8 flex flex-col items-center gap-6 shadow-2xl w-80">
-        <div className="w-16 h-16 rounded-full bg-brand-teal/20 flex items-center justify-center animate-pulse">
-          <Phone size={32} className="text-brand-teal" />
+      <div className="bg-[#023047] rounded-2xl p-8 text-center w-80 shadow-2xl border border-[#219ebc]/30">
+        <div className="w-20 h-20 rounded-full bg-[#219ebc] flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4">
+          {incomingCall.callerName?.[0]?.toUpperCase() || '?'}
         </div>
-        <div className="text-center">
-          <p className="text-brand-sky text-sm">Chamada de vídeo recebida</p>
-          <p className="text-white font-bold text-lg mt-1">ID: {caller.callerId.slice(0, 8)}…</p>
-        </div>
-        <div className="flex gap-4">
+
+        <p className="text-white font-semibold text-xl mb-1">{incomingCall.callerName}</p>
+        <p className="text-[#8ecae6] text-sm mb-8">Chamada de vídeo recebida...</p>
+
+        <div className="flex gap-6 justify-center">
           <button
             onClick={reject}
-            className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors"
+            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
           >
-            <PhoneOff size={22} className="text-white" />
+            <PhoneOff className="w-6 h-6" />
           </button>
           <button
             onClick={accept}
-            className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-colors"
+            className="w-14 h-14 rounded-full bg-[#10b981] hover:bg-green-600 flex items-center justify-center text-white transition-colors"
           >
-            <Phone size={22} className="text-white" />
+            <Phone className="w-6 h-6" />
           </button>
         </div>
       </div>

@@ -1,106 +1,110 @@
-import { useRef, useState, useCallback } from 'react'
-import { useSocketStore } from '../store/socket.store'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useSocketStore } from '@/store/socket.store'
 
-const STUN = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+const ICE_SERVERS = {
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+}
 
-export function useWebRTC(friendId) {
-  const socket = useSocketStore((s) => s.socket)
+export function useWebRTC({ friendId, isCaller }) {
+  const { socket } = useSocketStore()
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
 
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
-  const [isMuted, setIsMuted] = useState(false)
-  const [isCamOff, setIsCamOff] = useState(false)
+  const [callState, setCallState] = useState('connecting') // connecting | active | ended
 
-  const createPC = useCallback(() => {
-    const pc = new RTCPeerConnection(STUN)
+  const cleanup = useCallback(() => {
+    pcRef.current?.close()
+    pcRef.current = null
+    localStreamRef.current?.getTracks().forEach((t) => t.stop())
+    localStreamRef.current = null
+    setLocalStream(null)
+    setRemoteStream(null)
+    setCallState('ended')
+  }, [])
 
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        socket?.emit('webrtc:ice-candidate', { targetUserId: friendId, candidate })
+  useEffect(() => {
+    if (!socket || !friendId) return
+
+    async function start() {
+      // Capturar mídia local
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      localStreamRef.current = stream
+      setLocalStream(stream)
+
+      // Criar peer connection
+      const pc = new RTCPeerConnection(ICE_SERVERS)
+      pcRef.current = pc
+
+      // Adicionar tracks locais
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
+
+      // Stream remoto
+      const remote = new MediaStream()
+      pc.ontrack = (e) => {
+        e.streams[0].getTracks().forEach((t) => remote.addTrack(t))
+        setRemoteStream(remote)
+        setCallState('active')
+      }
+
+      // ICE candidates
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          socket.emit('webrtc:ice-candidate', { targetUserId: friendId, candidate: e.candidate })
+        }
+      }
+
+      if (isCaller) {
+        // Sinalizar início da chamada e aguardar aceitação
+        socket.emit('call:request', { targetUserId: friendId })
+        socket.once('call:accepted', async () => {
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+          socket.emit('webrtc:offer', { targetUserId: friendId, sdp: offer })
+        })
       }
     }
 
-    pc.ontrack = (e) => {
-      setRemoteStream(e.streams[0])
+    start().catch(console.error)
+
+    // Receber offer (callee)
+    socket.on('webrtc:offer', async ({ sdp }) => {
+      if (!pcRef.current) return
+      await pcRef.current.setRemoteDescription(sdp)
+      const answer = await pcRef.current.createAnswer()
+      await pcRef.current.setLocalDescription(answer)
+      socket.emit('webrtc:answer', { targetUserId: friendId, sdp: answer })
+    })
+
+    // Receber answer (caller)
+    socket.on('webrtc:answer', async ({ sdp }) => {
+      await pcRef.current?.setRemoteDescription(sdp)
+    })
+
+    // Receber ICE candidates
+    socket.on('webrtc:ice-candidate', async ({ candidate }) => {
+      try {
+        await pcRef.current?.addIceCandidate(candidate)
+      } catch {}
+    })
+
+    // Chamada encerrada pelo outro lado
+    socket.on('call:ended', () => cleanup())
+
+    return () => {
+      socket.off('webrtc:offer')
+      socket.off('webrtc:answer')
+      socket.off('webrtc:ice-candidate')
+      socket.off('call:ended')
+      cleanup()
     }
-
-    pcRef.current = pc
-    return pc
-  }, [socket, friendId])
-
-  const startCall = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    localStreamRef.current = stream
-    setLocalStream(stream)
-
-    const pc = createPC()
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-    socket?.emit('webrtc:offer', { targetUserId: friendId, sdp: pc.localDescription })
-  }, [createPC, socket, friendId])
-
-  const answerCall = useCallback(async (offerSdp) => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    localStreamRef.current = stream
-    setLocalStream(stream)
-
-    const pc = createPC()
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-
-    await pc.setRemoteDescription(offerSdp)
-    const answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-    socket?.emit('webrtc:answer', { targetUserId: friendId, sdp: pc.localDescription })
-  }, [createPC, socket, friendId])
-
-  const addIceCandidate = useCallback(async (candidate) => {
-    await pcRef.current?.addIceCandidate(candidate)
-  }, [])
-
-  const setRemoteDescription = useCallback(async (sdp) => {
-    await pcRef.current?.setRemoteDescription(sdp)
-  }, [])
+  }, [socket, friendId, isCaller, cleanup])
 
   const endCall = useCallback(() => {
-    localStreamRef.current?.getTracks().forEach((t) => t.stop())
-    pcRef.current?.close()
-    pcRef.current = null
-    setLocalStream(null)
-    setRemoteStream(null)
     socket?.emit('call:end', { targetUserId: friendId })
-  }, [socket, friendId])
+    cleanup()
+  }, [socket, friendId, cleanup])
 
-  const toggleMute = useCallback(() => {
-    const audioTrack = localStreamRef.current?.getAudioTracks()[0]
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled
-      setIsMuted(!audioTrack.enabled)
-    }
-  }, [])
-
-  const toggleCamera = useCallback(() => {
-    const videoTrack = localStreamRef.current?.getVideoTracks()[0]
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled
-      setIsCamOff(!videoTrack.enabled)
-    }
-  }, [])
-
-  return {
-    localStream,
-    remoteStream,
-    isMuted,
-    isCamOff,
-    startCall,
-    answerCall,
-    addIceCandidate,
-    setRemoteDescription,
-    endCall,
-    toggleMute,
-    toggleCamera,
-  }
+  return { localStream, remoteStream, callState, endCall }
 }

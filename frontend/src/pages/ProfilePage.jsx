@@ -1,90 +1,111 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Save } from 'lucide-react'
-import toast from 'react-hot-toast'
-import { onboard } from '../api/auth.api'
-import { useAuthStore } from '../store/auth.store'
-import { Avatar } from '../components/ui/Avatar'
-import { Input } from '../components/ui/Input'
-import { Button } from '../components/ui/Button'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { AlertCircle, Check } from 'lucide-react'
+import { onboard } from '@/api/auth.api'
+import { useAuthStore } from '@/store/auth.store'
 
 const LANGUAGES = [
-  'Português', 'Inglês', 'Espanhol', 'Francês', 'Alemão',
-  'Italiano', 'Japonês', 'Mandarim', 'Árabe', 'Russo',
-  'Coreano', 'Hindi', 'Turco', 'Holandês', 'Polonês',
+  'Inglês', 'Português', 'Espanhol', 'Francês', 'Alemão',
+  'Italiano', 'Japonês', 'Mandarim', 'Coreano', 'Árabe',
+  'Russo', 'Hindi', 'Holandês', 'Polonês', 'Turco',
 ]
 
 export default function ProfilePage() {
-  const { usuario, updateUsuario } = useAuthStore()
+  const { user, token, setAuth } = useAuthStore()
   const [form, setForm] = useState({
-    fullName: usuario?.fullName || '',
-    bio: usuario?.bio || '',
-    nativeLanguage: usuario?.nativeLanguage || '',
-    learningLanguage: usuario?.learningLanguage || '',
-    location: usuario?.location || '',
-    profilePic: usuario?.profilePic || '',
+    nativeLanguage: user?.nativeLanguage || '',
+    learningLanguage: user?.learningLanguage || '',
+    bio: user?.bio || '',
+    profilePic: user?.profilePic || '',
+    location: user?.location || '',
   })
 
-  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
-
-  const save = useMutation({
+  const mutation = useMutation({
     mutationFn: () => onboard(form),
-    onSuccess: ({ data }) => {
-      updateUsuario(data.usuario)
-      toast.success('Perfil atualizado!')
-    },
-    onError: (err) => toast.error(err.response?.data?.erro || 'Erro ao salvar'),
+    onSuccess: ({ data }) => setAuth(data.usuario, token),
   })
+
+  function set(field) {
+    return (value) => setForm((prev) => ({ ...prev, [field]: typeof value === 'string' ? value : value.target.value }))
+  }
 
   return (
-    <div className="p-8 max-w-2xl">
-      <h1 className="text-2xl font-bold text-white mb-8">Meu perfil</h1>
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-foreground mb-6">Meu Perfil</h1>
 
-      <div className="flex items-center gap-5 mb-8">
-        <Avatar usuario={{ ...usuario, ...form }} size="xl" />
-        <div>
-          <p className="text-white font-bold text-lg">{form.fullName || usuario?.fullName}</p>
-          <p className="text-brand-sky text-sm">{form.nativeLanguage} → {form.learningLanguage}</p>
-        </div>
-      </div>
-
-      <div className="bg-white/5 border border-brand-teal/20 rounded-2xl p-6 space-y-5">
-        <Input label="Nome completo" value={form.fullName} onChange={set('fullName')} />
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-brand-sky">Biografia</label>
-          <textarea
-            rows={3}
-            value={form.bio}
-            onChange={set('bio')}
-            className="w-full px-4 py-2.5 rounded-xl bg-brand-navy/60 border border-brand-teal/40 text-white placeholder-brand-sky/50 focus:outline-none focus:border-brand-teal focus:ring-1 focus:ring-brand-teal transition-colors resize-none"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-brand-sky">Idioma nativo</label>
-            <select value={form.nativeLanguage} onChange={set('nativeLanguage')}
-              className="w-full px-4 py-2.5 rounded-xl bg-brand-navy/60 border border-brand-teal/40 text-white focus:outline-none focus:border-brand-teal transition-colors">
-              {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
+        <div className="bg-card rounded-xl border border-border p-6">
+          {/* Avatar preview */}
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border">
+            {form.profilePic ? (
+              <img src={form.profilePic} alt="Avatar" className="w-20 h-20 rounded-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-[#219ebc] flex items-center justify-center text-white text-2xl font-bold">
+                {user?.fullName?.[0]?.toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p className="font-semibold text-foreground text-lg">{user?.fullName}</p>
+              <p className="text-sm text-muted-foreground">{user?.email}</p>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-brand-sky">Aprendendo</label>
-            <select value={form.learningLanguage} onChange={set('learningLanguage')}
-              className="w-full px-4 py-2.5 rounded-xl bg-brand-navy/60 border border-brand-teal/40 text-white focus:outline-none focus:border-brand-teal transition-colors">
-              {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); mutation.mutate() }} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Idioma Nativo</Label>
+                <Select value={form.nativeLanguage} onValueChange={set('nativeLanguage')}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Idioma que Aprende</Label>
+                <Select value={form.learningLanguage} onValueChange={set('learningLanguage')}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{LANGUAGES.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="bio">Bio</Label>
+              <textarea id="bio" value={form.bio} onChange={set('bio')} rows={3} className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none" />
+            </div>
+
+            <div>
+              <Label htmlFor="profilePic">URL da Foto</Label>
+              <Input id="profilePic" type="url" value={form.profilePic} onChange={set('profilePic')} className="mt-1" placeholder="https://..." />
+            </div>
+
+            <div>
+              <Label htmlFor="location">Localização</Label>
+              <Input id="location" value={form.location} onChange={set('location')} className="mt-1" placeholder="São Paulo, Brasil" />
+            </div>
+
+            {mutation.isError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Erro ao salvar perfil.
+              </div>
+            )}
+
+            {mutation.isSuccess && (
+              <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg">
+                <Check className="w-4 h-4 shrink-0" />
+                Perfil atualizado com sucesso!
+              </div>
+            )}
+
+            <Button type="submit" className="bg-[#219ebc] hover:bg-[#023047] text-white" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Salvando...' : 'Salvar alterações'}
+            </Button>
+          </form>
         </div>
-
-        <Input label="Localização" value={form.location} onChange={set('location')} placeholder="Cidade, País" />
-        <Input label="URL da foto de perfil" value={form.profilePic} onChange={set('profilePic')} type="url" placeholder="https://..." />
-
-        <Button variant="secondary" onClick={() => save.mutate()} disabled={save.isPending} className="w-full">
-          <Save size={16} />
-          {save.isPending ? 'Salvando…' : 'Salvar alterações'}
-        </Button>
       </div>
     </div>
   )

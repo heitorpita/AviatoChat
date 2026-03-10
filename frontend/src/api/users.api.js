@@ -1,4 +1,4 @@
-import api from './axios'
+import api from '@/lib/axios'
 
 export const getChatUsers = () => api.get('/users/chat-users')
 export const getFriends = () => api.get('/users/friends')

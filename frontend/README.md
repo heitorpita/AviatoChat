@@ -1,92 +1,16 @@
-# AviatoChat — Frontend
+# React + Vite
 
-Interface web do AviatoChat, plataforma de troca de idiomas com chat e videochamada P2P.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Stack
+Currently, two official plugins are available:
 
-| Tecnologia | Uso |
-|-----------|-----|
-| React 19 + Vite | Base |
-| React Router v6 | Roteamento |
-| Tailwind CSS v4 | Estilos |
-| Zustand | Estado global (auth, socket, online users) |
-| TanStack Query | Cache e fetch da API REST |
-| Axios | HTTP client |
-| Socket.IO Client | Chat em tempo real e sinalização WebRTC |
-| Lucide React | Ícones |
-| react-hot-toast | Notificações toast |
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Paleta de cores da marca
+## React Compiler
 
-| Token Tailwind | Nome | Hex |
-|---------------|------|-----|
-| `bg-brand-navy` | Deep Space Blue | `#023047` |
-| `bg-brand-teal` | Blue Green | `#219ebc` |
-| `bg-brand-sky` | Sky Blue | `#8ecae6` |
-| `bg-brand-amber` | Amber Flame | `#ffb703` |
-| `bg-brand-orange` | Tiger Orange | `#fb8500` |
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Como rodar
+## Expanding the ESLint configuration
 
-```bash
-npm install
-npm run dev   # http://localhost:5173
-```
-
-> O backend deve estar rodando em `http://localhost:5001`
-
-## Estrutura
-
-```
-src/
-├── api/              # Módulos Axios por domínio
-│   ├── axios.js      # Instância base com interceptor JWT
-│   ├── auth.api.js
-│   ├── users.api.js
-│   ├── friends.api.js
-│   └── chat.api.js
-├── components/
-│   ├── layout/       # Layout.jsx + Sidebar.jsx (com logo avião)
-│   ├── ui/           # Avatar (+ online indicator), Button, Input
-│   └── IncomingCallModal.jsx  # Overlay global de chamada recebida
-├── hooks/
-│   ├── useSocket.js  # Conecta/desconecta Socket.IO conforme auth
-│   └── useWebRTC.js  # RTCPeerConnection, offer/answer/ICE candidates
-├── lib/
-│   └── socket.js     # Singleton io()
-├── pages/            # Uma página por rota
-├── router/           # AppRouter, ProtectedRoute, AdminRoute
-└── store/
-    ├── auth.store.js  # { usuario, token, setAuth, logout } — localStorage
-    └── socket.store.js # { socket, onlineUsers }
-```
-
-## Páginas e rotas
-
-| Rota | Página | Auth |
-|------|--------|------|
-| `/` | Landing | — |
-| `/login` | Login | — |
-| `/signup` | Signup | — |
-| `/onboarding` | Onboarding | ✅ sem isOnboarded |
-| `/home` | Home | ✅ + onboarded |
-| `/friends` | Friends | ✅ + onboarded |
-| `/notifications` | Notifications | ✅ + onboarded |
-| `/chat/:friendId` | Chat | ✅ + onboarded |
-| `/call/:friendId` | Call (WebRTC) | ✅ + onboarded |
-| `/profile` | Profile | ✅ + onboarded |
-| `/admin` | Admin | ✅ + role ADMIN |
-| `*` | 404 | — |
-
-## Auth Flow
-
-```
-isAuthenticated? → Não → /login
-isAuthenticated? → Sim → isOnboarded? → Não → /onboarding
-isAuthenticated? → Sim → isOnboarded? → Sim → destino
-```
-
-## Videochamada WebRTC
-
-Sinalização via Socket.IO (relay no servidor). Mídia trafega P2P entre browsers.
-STUN: `stun:stun.l.google.com:19302` (gratuito).
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

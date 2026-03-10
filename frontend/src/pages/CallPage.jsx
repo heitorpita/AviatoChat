@@ -1,29 +1,32 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { PhoneOff, Mic, MicOff, Video, VideoOff, Loader2 } from 'lucide-react'
-import { useAuthStore } from '../store/auth.store'
-import { useSocketStore } from '../store/socket.store'
-import { useWebRTC } from '../hooks/useWebRTC'
+import { useEffect, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { PhoneOff, Mic, MicOff, Video, VideoOff } from 'lucide-react'
+import { useState } from 'react'
+import { useWebRTC } from '@/hooks/useWebRTC'
+import { getFriends } from '@/api/users.api'
 
 export default function CallPage() {
   const { friendId } = useParams()
   const navigate = useNavigate()
-  const usuario = useAuthStore((s) => s.usuario)
-  const socket = useSocketStore((s) => s.socket)
+  const [searchParams] = useSearchParams()
+  const isCaller = searchParams.get('caller') === 'true'
 
-  const {
-    localStream, remoteStream,
-    isMuted, isCamOff,
-    startCall, answerCall,
-    addIceCandidate, setRemoteDescription,
-    endCall, toggleMute, toggleCamera,
-  } = useWebRTC(friendId)
+  const [micOn, setMicOn] = useState(true)
+  const [camOn, setCamOn] = useState(true)
 
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
-  const [status, setStatus] = useState('connecting') // connecting | active | ended
 
-  // Atribui streams aos elementos <video>
+  const { localStream, remoteStream, callState, endCall } = useWebRTC({ friendId, isCaller })
+
+  const { data } = useQuery({
+    queryKey: ['friends'],
+    queryFn: () => getFriends().then((r) => r.data),
+  })
+  const friend = data?.amigos?.find((f) => f.id === friendId)
+
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream
@@ -33,117 +36,88 @@ export default function CallPage() {
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream
-      setStatus('active')
     }
   }, [remoteStream])
 
-  // Inicia a chamada ao montar (caller)
   useEffect(() => {
-    if (!socket) return
+    if (callState === 'ended') navigate(-1)
+  }, [callState, navigate])
 
-    // Se chegamos aqui via "call:accepted", somos o caller → iniciamos a oferta
-    startCall()
+  function toggleMic() {
+    localStream?.getAudioTracks().forEach((t) => { t.enabled = !t.enabled })
+    setMicOn((v) => !v)
+  }
 
-    const onOffer = async ({ from, sdp }) => {
-      if (from === friendId) {
-        await answerCall(sdp)
-      }
-    }
+  function toggleCam() {
+    localStream?.getVideoTracks().forEach((t) => { t.enabled = !t.enabled })
+    setCamOn((v) => !v)
+  }
 
-    const onAnswer = async ({ sdp }) => {
-      await setRemoteDescription(sdp)
-    }
-
-    const onIce = async ({ candidate }) => {
-      await addIceCandidate(candidate)
-    }
-
-    const onEnded = () => {
-      setStatus('ended')
-      setTimeout(() => navigate('/home'), 2000)
-    }
-
-    socket.on('webrtc:offer', onOffer)
-    socket.on('webrtc:answer', onAnswer)
-    socket.on('webrtc:ice-candidate', onIce)
-    socket.on('call:ended', onEnded)
-
-    return () => {
-      socket.off('webrtc:offer', onOffer)
-      socket.off('webrtc:answer', onAnswer)
-      socket.off('webrtc:ice-candidate', onIce)
-      socket.off('call:ended', onEnded)
-    }
-  }, [socket])
-
-  const handleEnd = () => {
+  function handleEnd() {
     endCall()
-    navigate('/home')
+    navigate(-1)
   }
 
   return (
-    <div className="h-screen bg-black flex flex-col">
-      {/* Vídeo remoto (tela cheia) */}
-      <div className="flex-1 relative bg-gray-900 flex items-center justify-center">
-        {status !== 'active' ? (
-          <div className="flex flex-col items-center gap-4 text-white">
-            <Loader2 className="animate-spin text-brand-teal" size={40} />
-            <p className="text-brand-sky text-lg">
-              {status === 'ended' ? 'Chamada encerrada.' : 'Conectando…'}
+    <div className="h-screen bg-[#011a27] flex flex-col items-center justify-center relative">
+      {/* Vídeo remoto (principal) */}
+      <div className="w-full h-full">
+        {remoteStream ? (
+          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-white/40 flex-col gap-4">
+            <div className="w-24 h-24 rounded-full bg-[#023047] flex items-center justify-center text-4xl font-bold text-[#8ecae6]">
+              {friend?.fullName?.[0]?.toUpperCase() || '?'}
+            </div>
+            <p className="text-lg text-white/60">{friend?.fullName}</p>
+            <p className="text-sm text-white/40 animate-pulse">
+              {callState === 'connecting' ? 'Conectando...' : 'Aguardando...'}
             </p>
           </div>
-        ) : (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
-          />
         )}
-
-        {/* Vídeo local (picture-in-picture) */}
-        <div className="absolute bottom-4 right-4 w-32 h-24 rounded-xl overflow-hidden border-2 border-brand-teal shadow-lg bg-gray-800">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className={`w-full h-full object-cover ${isCamOff ? 'hidden' : ''}`}
-          />
-          {isCamOff && (
-            <div className="w-full h-full flex items-center justify-center bg-gray-800">
-              <VideoOff size={20} className="text-brand-sky" />
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Vídeo local (picture-in-picture) */}
+      <div className="absolute bottom-24 right-4 w-32 h-24 rounded-xl overflow-hidden border-2 border-[#219ebc] shadow-lg">
+        <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+      </div>
+
+      {/* Nome do amigo */}
+      {friend && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center">
+          <p className="text-white font-semibold text-lg">{friend.fullName}</p>
+          <p className="text-white/50 text-sm">{callState === 'active' ? 'Em chamada' : 'Conectando...'}</p>
+        </div>
+      )}
 
       {/* Controles */}
-      <div className="flex items-center justify-center gap-6 py-6 bg-brand-navy border-t border-brand-teal/20">
-        <ControlBtn onClick={toggleMute} active={isMuted} icon={isMuted ? MicOff : Mic} label={isMuted ? 'Ativar mic' : 'Silenciar'} />
-        <ControlBtn onClick={handleEnd} danger icon={PhoneOff} label="Encerrar" />
-        <ControlBtn onClick={toggleCamera} active={isCamOff} icon={isCamOff ? VideoOff : Video} label={isCamOff ? 'Ativar câmera' : 'Desligar câmera'} />
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={toggleMic}
+          className={`w-12 h-12 rounded-full border-2 ${micOn ? 'border-white/30 text-white bg-white/10' : 'border-red-400 text-red-400 bg-red-400/10'}`}
+        >
+          {micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+        </Button>
+
+        <Button
+          size="icon"
+          onClick={handleEnd}
+          className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg"
+        >
+          <PhoneOff className="w-6 h-6" />
+        </Button>
+
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={toggleCam}
+          className={`w-12 h-12 rounded-full border-2 ${camOn ? 'border-white/30 text-white bg-white/10' : 'border-red-400 text-red-400 bg-red-400/10'}`}
+        >
+          {camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+        </Button>
       </div>
     </div>
-  )
-}
-
-function ControlBtn({ onClick, icon: Icon, label, danger, active }) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      className={`
-        flex flex-col items-center gap-1 group
-      `}
-    >
-      <div className={`
-        w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95
-        ${danger ? 'bg-red-600 hover:bg-red-700' : active ? 'bg-brand-teal/30 hover:bg-brand-teal/50' : 'bg-white/10 hover:bg-white/20'}
-      `}>
-        <Icon size={22} className={danger ? 'text-white' : active ? 'text-brand-teal' : 'text-white'} />
-      </div>
-      <span className="text-xs text-brand-sky group-hover:text-white transition-colors">{label}</span>
-    </button>
   )
 }

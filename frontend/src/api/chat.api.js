@@ -1,7 +1,4 @@
-import api from './axios'
+import api from '@/lib/axios'
 
-export const getMessages = (friendId, { limit = 50, cursor } = {}) => {
-  const params = { limit }
-  if (cursor) params.cursor = cursor
-  return api.get(`/chat/messages/${friendId}`, { params })
-}
+export const getMessages = (friendId, params = {}) =>
+  api.get(`/chat/messages/${friendId}`, { params })

@@ -12,9 +12,16 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const isDev = process.env.NODE_ENV !== "production";
 
 // ─── Middlewares globais ──────────────────────────────────────────
-app.use(cors({ origin: CLIENT_ORIGIN }));
+app.use(
+  cors({
+    origin: isDev
+      ? (origin, cb) => cb(null, true) // aceita qualquer origem em dev
+      : CLIENT_ORIGIN,
+  })
+);
 app.use(express.json());
 
 // ─── Rotas ───────────────────────────────────────────────────────
@@ -30,7 +37,7 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Socket.IO ────────────────────────────────────────────────────
-initSocket(httpServer, CLIENT_ORIGIN);
+initSocket(httpServer, isDev ? "*" : CLIENT_ORIGIN);
 
 httpServer.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT} [${process.env.NODE_ENV}]`);

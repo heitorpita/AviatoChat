@@ -1,4 +1,4 @@
-import api from './axios'
+import api from '@/lib/axios'
 
 export const sendFriendRequest = (userId) => api.post(`/friends/request/${userId}`)
 export const acceptFriendRequest = (requestId) => api.put(`/friends/request/${requestId}/accept`)

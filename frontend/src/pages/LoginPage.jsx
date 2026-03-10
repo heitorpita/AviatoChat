@@ -1,70 +1,85 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
-import { login } from '../api/auth.api'
-import { useAuthStore } from '../store/auth.store'
-import { Input } from '../components/ui/Input'
-import { Button } from '../components/ui/Button'
+import { useMutation } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Globe, Mail, Lock, AlertCircle } from 'lucide-react'
+import { login } from '@/api/auth.api'
+import { useAuthStore } from '@/store/auth.store'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const setAuth = useAuthStore((s) => s.setAuth)
-  const [form, setForm] = useState({ email: '', password: '' })
-  const [loading, setLoading] = useState(false)
+  const { setAuth } = useAuthStore()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      const { data } = await login(form)
+  const mutation = useMutation({
+    mutationFn: () => login({ email, password }),
+    onSuccess: ({ data }) => {
       setAuth(data.usuario, data.token)
-      toast.success('Bem-vindo de volta!')
       navigate(data.usuario.isOnboarded ? '/home' : '/onboarding')
-    } catch (err) {
-      toast.error(err.response?.data?.erro || 'Credenciais inválidas')
-    } finally {
-      setLoading(false)
-    }
+    },
+  })
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    mutation.mutate()
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md animate-fade-up">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-10">
-          <img src="/logo.svg" alt="AviatoChat" className="w-14 h-14 mb-4" />
-          <h1 className="text-4xl font-extrabold text-gradient-amber">AviatoChat</h1>
-          <p className="text-brand-sky/55 mt-2 text-sm tracking-wide">Entre na sua conta</p>
+    <div className="min-h-screen bg-gradient-to-br from-[#8ecae6] via-[#219ebc] to-[#023047] flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <Globe className="w-10 h-10 text-white" />
+          <span className="text-white text-3xl font-bold">AviatoChat</span>
         </div>
 
-        <form onSubmit={handleSubmit} className="glass rounded-2xl p-8 space-y-5">
-          <Input
-            label="Email"
-            type="email"
-            placeholder="seu@email.com"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            required
-          />
-          <Input
-            label="Senha"
-            type="password"
-            placeholder="••••••••"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            required
-          />
-          <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-            {loading ? 'Entrando…' : 'Entrar'}
-          </Button>
-        </form>
+        <div className="bg-white rounded-2xl p-8 shadow-2xl">
+          <h1 className="text-3xl font-bold text-[#023047] mb-1">Bem-vindo de volta</h1>
+          <p className="text-[#219ebc] mb-6">Entre para continuar sua jornada</p>
 
-        <p className="text-center text-brand-sky/50 text-sm mt-6">
-          Não tem conta?{' '}
-          <Link to="/signup" className="text-brand-teal hover:text-brand-sky font-semibold transition-colors">
-            Cadastre-se
-          </Link>
-        </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <div className="relative mt-1">
+                <Mail className="absolute left-3 top-2.5 w-5 h-5 text-[#219ebc]" />
+                <Input id="email" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="password">Senha</Label>
+              <div className="relative mt-1">
+                <Lock className="absolute left-3 top-2.5 w-5 h-5 text-[#219ebc]" />
+                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+              </div>
+            </div>
+
+            {mutation.isError && (
+              <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {mutation.error?.response?.data?.mensagem || 'Erro ao entrar. Verifique suas credenciais.'}
+              </div>
+            )}
+
+            <Button type="submit" className="w-full bg-[#023047] hover:bg-[#219ebc]" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Entrando...' : 'Entrar'}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center space-y-3">
+            <p className="text-[#023047]">
+              Não tem conta?{' '}
+              <Link to="/signup" className="text-[#219ebc] hover:text-[#023047] font-medium">
+                Cadastre-se grátis
+              </Link>
+            </p>
+            <Link to="/" className="block text-sm text-[#219ebc] hover:text-[#023047]">
+              ← Voltar ao início
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   )

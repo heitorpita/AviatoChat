@@ -1,86 +1,92 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, Users, Bell, User, LogOut, ShieldCheck, Plane } from 'lucide-react'
-import { useAuthStore } from '../../store/auth.store'
-import { logout as logoutApi } from '../../api/auth.api'
-import { disconnectSocket } from '../../lib/socket'
-import { Avatar } from '../ui/Avatar'
+import { Home, MessageCircle, Users, Bell, User, LogOut, Globe, Shield } from 'lucide-react'
+import { useAuthStore } from '@/store/auth.store'
+import { disconnectSocket } from '@/lib/socket'
+import { useSocketStore } from '@/store/socket.store'
+import { logout } from '@/api/auth.api'
 
-const navItems = [
+const navLinks = [
   { to: '/home', icon: Home, label: 'Home' },
-  { to: '/friends', icon: Users, label: 'Friends' },
-  { to: '/notifications', icon: Bell, label: 'Notifications' },
-  { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/chat', icon: MessageCircle, label: 'Chat' },
+  { to: '/friends', icon: Users, label: 'Amigos' },
+  { to: '/notifications', icon: Bell, label: 'Notificações' },
+  { to: '/profile', icon: User, label: 'Perfil' },
 ]
 
-export function Sidebar() {
-  const { usuario, logout } = useAuthStore()
+export default function Sidebar() {
+  const { user, clearAuth } = useAuthStore()
+  const { setSocket, setOnlineUsers } = useSocketStore()
   const navigate = useNavigate()
 
-  const handleLogout = async () => {
-    try { await logoutApi() } catch { /* silencioso */ }
+  async function handleLogout() {
+    try { await logout() } catch {}
     disconnectSocket()
-    logout()
+    setSocket(null)
+    setOnlineUsers([])
+    clearAuth()
     navigate('/login')
   }
 
   return (
-    <aside className="w-64 min-h-screen bg-brand-navy border-r border-brand-teal/15 flex flex-col">
+    <aside className="w-64 h-screen bg-[#023047] flex flex-col text-white shrink-0">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-brand-teal/15">
-        <img src="/logo.svg" alt="AviatoChat" className="w-8 h-8" />
-        <span className="text-xl font-bold text-gradient-amber" style={{ fontFamily: 'Syne, sans-serif' }}>AviatoChat</span>
+      <div className="flex items-center gap-2 px-5 py-5 border-b border-white/10">
+        <Globe className="w-7 h-7 text-[#8ecae6]" />
+        <span className="font-bold text-lg">AviatoChat</span>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map(({ to, icon: Icon, label }) => (
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {navLinks.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm
-               ${isActive
-                 ? 'bg-brand-teal/90 text-white shadow-lg shadow-brand-teal/25'
-                 : 'text-brand-sky/70 hover:bg-brand-teal/15 hover:text-white'
-               }`
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#219ebc] text-white'
+                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+              }`
             }
           >
-            <Icon size={17} />
+            <Icon className="w-5 h-5" />
             {label}
           </NavLink>
         ))}
 
-        {usuario?.role === 'ADMIN' && (
+        {user?.role === 'ADMIN' && (
           <NavLink
             to="/admin"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm
-               ${isActive
-                 ? 'bg-brand-amber text-brand-navy shadow-lg shadow-brand-amber/25'
-                 : 'text-brand-amber/80 hover:bg-brand-amber/15'
-               }`
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#ffb703] text-[#023047]'
+                  : 'text-[#ffb703]/80 hover:bg-white/10 hover:text-[#ffb703]'
+              }`
             }
           >
-            <ShieldCheck size={17} />
+            <Shield className="w-5 h-5" />
             Admin
           </NavLink>
         )}
       </nav>
 
-      {/* Usuário + Logout */}
-      <div className="p-4 border-t border-brand-teal/15">
-        <div className="flex items-center gap-3 mb-3 px-1">
-          <Avatar usuario={usuario} size="sm" showOnline />
+      {/* User + Logout */}
+      <div className="px-3 py-4 border-t border-white/10">
+        <div className="flex items-center gap-3 px-3 py-2 mb-2">
+          <div className="w-8 h-8 rounded-full bg-[#219ebc] flex items-center justify-center text-sm font-bold shrink-0">
+            {user?.fullName?.[0]?.toUpperCase() || '?'}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{usuario?.fullName}</p>
-            <p className="text-xs text-brand-sky/55 truncate">{usuario?.nativeLanguage} → {usuario?.learningLanguage}</p>
+            <p className="text-sm font-medium truncate">{user?.fullName}</p>
+            <p className="text-xs text-white/50 truncate">{user?.nativeLanguage} → {user?.learningLanguage}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-all"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors w-full"
         >
-          <LogOut size={15} />
+          <LogOut className="w-4 h-4" />
           Sair
         </button>
       </div>

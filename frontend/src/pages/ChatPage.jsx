@@ -1,165 +1,262 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Send, Video, Loader2 } from 'lucide-react'
-import { getMessages } from '../api/chat.api'
-import { getFriends } from '../api/users.api'
-import { useAuthStore } from '../store/auth.store'
-import { useSocketStore } from '../store/socket.store'
-import { Avatar } from '../components/ui/Avatar'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Send, Video, Globe, MessageSquare, Loader2, CheckCheck } from 'lucide-react'
+import { useAuthStore } from '@/store/auth.store'
+import { useSocketStore } from '@/store/socket.store'
+import { getFriends } from '@/api/users.api'
+import { getMessages } from '@/api/chat.api'
+import { useChatSocket } from '@/hooks/useSocket'
 
 export default function ChatPage() {
   const { friendId } = useParams()
-  const usuario = useAuthStore((s) => s.usuario)
-  const socket = useSocketStore((s) => s.socket)
-  const onlineUsers = useSocketStore((s) => s.onlineUsers)
+  const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const { onlineUsers } = useSocketStore()
+  const queryClient = useQueryClient()
 
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
+  const [isTyping, setIsTyping] = useState(false) // amigo digitando
+  const typingTimerRef = useRef(null)
   const bottomRef = useRef(null)
-  const typingTimeout = useRef(null)
 
-  // Busca dados do amigo a partir da lista de amigos
-  const { data: friends = [] } = useQuery({
+  // Lista de amigos (sidebar)
+  const { data: friendsData } = useQuery({
     queryKey: ['friends'],
-    queryFn: () => getFriends().then((r) => r.data.amigos),
+    queryFn: () => getFriends().then((r) => r.data),
   })
-  const friend = friends.find((f) => f.id === friendId)
-  const isOnline = onlineUsers.includes(friendId)
+  const friends = friendsData?.amigos || []
+  const activeFriend = friends.find((f) => f.id === friendId)
 
-  // Histórico inicial
-  const { isLoading } = useQuery({
+  // Histórico de mensagens
+  const { isLoading: loadingMessages } = useQuery({
     queryKey: ['messages', friendId],
-    queryFn: () => getMessages(friendId).then((r) => r.data.messages),
-    onSuccess: (data) => setMessages(data),
+    queryFn: () => getMessages(friendId).then((r) => r.data),
+    enabled: !!friendId,
+    onSuccess: (data) => setMessages(data.mensagens || []),
   })
 
-  // Socket.IO
-  useEffect(() => {
-    if (!socket) return
+  // Socket handlers (memoizados para evitar re-subscribe)
+  const handleMessage = useCallback((msg) => {
+    setMessages((prev) => [...prev, msg])
+  }, [])
 
-    socket.emit('chat:join', { friendId })
-    socket.emit('chat:read', { friendId })
+  const handleTyping = useCallback(({ senderId, isTyping: typing }) => {
+    if (senderId === friendId) setIsTyping(typing)
+  }, [friendId])
 
-    const onMessage = (msg) => {
-      setMessages((prev) => [...prev, msg])
-      socket.emit('chat:read', { friendId })
-    }
+  const handleRead = useCallback(({ readAt }) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.senderId === user?.id && !m.readAt ? { ...m, readAt } : m))
+    )
+  }, [user?.id])
 
-    const onTyping = ({ senderId, isTyping }) => {
-      if (senderId === friendId) setIsTyping(isTyping)
-    }
+  const { sendMessage, sendTyping, markRead } = useChatSocket({
+    friendId,
+    onMessage: handleMessage,
+    onTyping: handleTyping,
+    onRead: handleRead,
+  })
 
-    socket.on('chat:message', onMessage)
-    socket.on('chat:typing', onTyping)
-
-    return () => {
-      socket.off('chat:message', onMessage)
-      socket.off('chat:typing', onTyping)
-    }
-  }, [socket, friendId])
-
-  // Auto-scroll
+  // Scroll para o fim ao receber mensagem
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
-  const handleTextChange = (e) => {
+  // Marcar como lido ao abrir a conversa
+  useEffect(() => {
+    if (friendId) markRead()
+  }, [friendId, markRead])
+
+  // Reset ao trocar de conversa
+  useEffect(() => {
+    setMessages([])
+    setIsTyping(false)
+    const cached = queryClient.getQueryData(['messages', friendId])
+    if (cached) setMessages(cached.mensagens || [])
+  }, [friendId, queryClient])
+
+  function handleInput(e) {
     setText(e.target.value)
-    socket?.emit('chat:typing', { friendId, isTyping: true })
-    clearTimeout(typingTimeout.current)
-    typingTimeout.current = setTimeout(() => {
-      socket?.emit('chat:typing', { friendId, isTyping: false })
-    }, 1500)
+    sendTyping(true)
+    clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = setTimeout(() => sendTyping(false), 1500)
   }
 
-  const sendMessage = (e) => {
+  function handleSend(e) {
     e.preventDefault()
-    if (!text.trim()) return
-    socket?.emit('chat:message', { friendId, text })
+    const trimmed = text.trim()
+    if (!trimmed || !friendId) return
+    sendMessage(trimmed)
     setText('')
-    socket?.emit('chat:typing', { friendId, isTyping: false })
+    sendTyping(false)
+    clearTimeout(typingTimerRef.current)
+  }
+
+  function formatTime(dateStr) {
+    return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <header className="flex items-center gap-4 px-4 py-3 border-b border-brand-teal/15 glass">
-        <Link to="/home" className="text-brand-sky hover:text-white transition-colors">
-          <ArrowLeft size={20} />
-        </Link>
-        {friend && <Avatar usuario={friend} size="sm" showOnline />}
-        <div className="flex-1">
-          <p className="text-white font-semibold text-sm">{friend?.fullName || '…'}</p>
-          <p className={`text-xs ${isOnline ? 'text-green-400' : 'text-brand-sky/50'}`}>
-            {isTyping ? 'digitando…' : isOnline ? 'Online' : 'Offline'}
-          </p>
+    <div className="h-full flex">
+      {/* Sidebar de conversas */}
+      <div className="w-72 border-r border-border bg-card flex flex-col shrink-0">
+        <div className="p-4 border-b border-border">
+          <h2 className="font-semibold text-foreground">Mensagens</h2>
         </div>
-        <Link to={`/call/${friendId}`}>
-          <button className="w-10 h-10 rounded-xl bg-brand-orange/20 hover:bg-brand-orange flex items-center justify-center transition-colors" title="Videochamada">
-            <Video size={18} className="text-brand-orange" />
-          </button>
-        </Link>
-      </header>
-
-      {/* Mensagens */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="animate-spin text-brand-teal" size={24} />
-          </div>
-        ) : (
-          messages.map((msg) => {
-            const isMe = msg.senderId === usuario?.id
-            return (
-              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isMe ? 'animate-msg-right' : 'animate-msg-left'}`}>
-                <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed
-                    ${isMe
-                      ? 'bg-brand-teal text-white rounded-br-sm shadow-lg shadow-brand-teal/20'
-                      : 'glass-light text-white rounded-bl-sm'
-                    }`}
-                >
-                  {msg.text}
-                  <span className={`block text-xs mt-1 ${isMe ? 'text-white/55 text-right' : 'text-brand-sky/50'}`}>
-                    {new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    {isMe && msg.readAt && ' ✓✓'}
-                  </span>
-                </div>
-              </div>
-            )
-          })
-        )}
-        {isTyping && (
-          <div className="flex justify-start">
-            <div className="bg-white/10 px-4 py-2.5 rounded-2xl rounded-bl-sm flex gap-1 items-center">
-              {[0, 150, 300].map((delay) => (
-                <span key={delay} className="w-2 h-2 rounded-full bg-brand-sky animate-bounce" style={{ animationDelay: `${delay}ms` }} />
-              ))}
+        <div className="flex-1 overflow-y-auto">
+          {friends.length === 0 ? (
+            <div className="p-6 text-center text-muted-foreground text-sm">
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              Adicione amigos para começar a conversar
             </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+          ) : (
+            friends.map((friend) => {
+              const online = onlineUsers.includes(friend.id)
+              const active = friend.id === friendId
+              return (
+                <button
+                  key={friend.id}
+                  onClick={() => navigate(`/chat/${friend.id}`)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left ${active ? 'bg-muted/70 border-r-2 border-[#219ebc]' : ''}`}
+                >
+                  <div className="relative shrink-0">
+                    {friend.profilePic ? (
+                      <img src={friend.profilePic} alt={friend.fullName} className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-[#219ebc] flex items-center justify-center text-white text-sm font-bold">
+                        {friend.fullName?.[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-white rounded-full ${online ? 'bg-[#10b981]' : 'bg-gray-300'}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{friend.fullName}</p>
+                    <p className="text-xs text-muted-foreground">{friend.nativeLanguage} → {friend.learningLanguage}</p>
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
       </div>
 
-      {/* Input */}
-      <form onSubmit={sendMessage} className="flex items-center gap-3 px-4 py-3 border-t border-brand-teal/15 glass">
-        <input
-          type="text"
-          placeholder="Digite uma mensagem…"
-          value={text}
-          onChange={handleTextChange}
-          className="flex-1 px-4 py-2.5 rounded-xl bg-white/6 border border-brand-teal/25 text-white placeholder-brand-sky/40 focus:outline-none focus:border-brand-teal/70 focus:bg-white/8 transition-all text-sm"
-        />
-        <button
-          type="submit"
-          disabled={!text.trim()}
-          className="w-10 h-10 rounded-xl bg-brand-teal hover:bg-cyan-500 disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center transition-all hover:glow-teal-sm active:scale-95"
-        >
-          <Send size={16} className="text-white" />
-        </button>
-      </form>
+      {/* Área de chat */}
+      {!friendId ? (
+        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+          <div>
+            <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>Selecione uma conversa para começar</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col">
+          {/* Header do chat */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                {activeFriend?.profilePic ? (
+                  <img src={activeFriend.profilePic} alt={activeFriend.fullName} className="w-9 h-9 rounded-full object-cover" />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-[#219ebc] flex items-center justify-center text-white text-sm font-bold">
+                    {activeFriend?.fullName?.[0]?.toUpperCase() || '?'}
+                  </div>
+                )}
+                {onlineUsers.includes(friendId) && (
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#10b981] border-2 border-white rounded-full" />
+                )}
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-foreground">{activeFriend?.fullName}</p>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Globe className="w-3 h-3" />
+                  {activeFriend?.nativeLanguage} → {activeFriend?.learningLanguage}
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/call/${friendId}?caller=true`)}
+              className="flex items-center gap-1.5 text-[#219ebc] border-[#219ebc] hover:bg-[#219ebc] hover:text-white"
+            >
+              <Video className="w-4 h-4" />
+              Ligar
+            </Button>
+          </div>
+
+          {/* Mensagens */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f0f9ff]">
+            {loadingMessages ? (
+              <div className="flex justify-center items-center h-full">
+                <Loader2 className="w-8 h-8 animate-spin text-[#219ebc]" />
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                Nenhuma mensagem ainda. Diga olá! 👋
+              </div>
+            ) : (
+              messages.map((msg) => {
+                const mine = msg.senderId === user?.id
+                return (
+                  <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] px-4 py-2 rounded-2xl text-sm ${mine ? 'bg-[#219ebc] text-white rounded-br-sm' : 'bg-white text-foreground border border-border rounded-bl-sm shadow-sm'}`}>
+                      <p>{msg.text}</p>
+                      <div className={`flex items-center gap-1 mt-1 text-[10px] ${mine ? 'text-white/70 justify-end' : 'text-muted-foreground'}`}>
+                        <span>{formatTime(msg.createdAt)}</span>
+                        {mine && (
+                          <CheckCheck className={`w-3 h-3 ${msg.readAt ? 'text-[#ffb703]' : 'text-white/50'}`} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+
+            {/* Typing indicator */}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-border rounded-2xl rounded-bl-sm px-4 py-2 shadow-sm">
+                  <div className="flex gap-1 items-center h-4">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="w-1.5 h-1.5 bg-[#219ebc] rounded-full animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input de mensagem */}
+          <form onSubmit={handleSend} className="flex items-center gap-2 px-4 py-3 border-t border-border bg-card">
+            <Input
+              value={text}
+              onChange={handleInput}
+              placeholder="Digite uma mensagem..."
+              className="flex-1 focus-visible:ring-[#219ebc]"
+              autoComplete="off"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="bg-[#219ebc] hover:bg-[#023047] text-white shrink-0"
+              disabled={!text.trim()}
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

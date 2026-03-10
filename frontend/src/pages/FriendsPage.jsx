@@ -1,62 +1,78 @@
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { MessageCircle, Video } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { getFriends } from '../api/users.api'
-import { useSocketStore } from '../store/socket.store'
-import { Avatar } from '../components/ui/Avatar'
+import { Button } from '@/components/ui/button'
+import { MessageSquare, Video, Globe, Users, Loader2 } from 'lucide-react'
+import { useSocketStore } from '@/store/socket.store'
+import { getFriends } from '@/api/users.api'
 
 export default function FriendsPage() {
-  const onlineUsers = useSocketStore((s) => s.onlineUsers)
-  const { data: friends = [], isLoading } = useQuery({
+  const navigate = useNavigate()
+  const { onlineUsers } = useSocketStore()
+
+  const { data, isLoading } = useQuery({
     queryKey: ['friends'],
-    queryFn: () => getFriends().then((r) => r.data.amigos),
+    queryFn: () => getFriends().then((r) => r.data),
   })
 
-  if (isLoading) return <div className="p-8 text-brand-sky">Carregando…</div>
+  const friends = data?.amigos || []
 
   return (
-    <div className="p-8 max-w-3xl">
-      <h1 className="text-2xl font-bold text-white mb-8">
-        Amigos <span className="text-brand-sky text-base font-normal">({friends.length})</span>
-      </h1>
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold text-foreground mb-6">Meus Amigos</h1>
 
-      {friends.length === 0 ? (
-        <div className="text-center py-20 text-brand-sky">
-          <p>Você ainda não tem amigos adicionados.</p>
-          <p className="text-sm mt-1">Explore a Home para encontrar parceiros!</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {friends.map((friend) => {
-            const isOnline = onlineUsers.includes(friend.id)
-            return (
-              <div key={friend.id} className="bg-white/5 border border-brand-teal/20 rounded-2xl p-4 flex items-center gap-4 hover:border-brand-teal/50 transition-colors">
-                <Avatar usuario={friend} size="md" showOnline />
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold">{friend.fullName}</p>
-                  <p className="text-brand-sky text-xs">{friend.nativeLanguage} → {friend.learningLanguage}</p>
-                  {friend.location && <p className="text-brand-sky/50 text-xs">{friend.location}</p>}
-                  <p className={`text-xs font-medium mt-0.5 ${isOnline ? 'text-green-400' : 'text-brand-sky/40'}`}>
-                    {isOnline ? '● Online' : '○ Offline'}
-                  </p>
+        {isLoading ? (
+          <div className="flex justify-center items-center p-16">
+            <Loader2 className="w-8 h-8 animate-spin text-[#219ebc]" />
+          </div>
+        ) : friends.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground bg-card rounded-xl border border-border">
+            <Users className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p>Você ainda não tem amigos. Adicione parceiros na página inicial!</p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {friends.map((friend) => {
+              const isOnline = onlineUsers.includes(friend.id)
+              return (
+                <div key={friend.id} className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border hover:shadow-md transition-shadow">
+                  <div className="relative shrink-0">
+                    {friend.profilePic ? (
+                      <img src={friend.profilePic} alt={friend.fullName} className="w-14 h-14 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-[#219ebc] flex items-center justify-center text-white text-lg font-bold">
+                        {friend.fullName?.[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <span className={`absolute bottom-0.5 right-0.5 w-3 h-3 border-2 border-white rounded-full ${isOnline ? 'bg-[#10b981]' : 'bg-gray-300'}`} />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground">{friend.fullName}</p>
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Globe className="w-3 h-3" />
+                      <span>{friend.nativeLanguage} → {friend.learningLanguage}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{isOnline ? 'Online agora' : 'Offline'}</p>
+                  </div>
+
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" className="bg-[#219ebc] hover:bg-[#023047] text-white" onClick={() => navigate(`/chat/${friend.id}`)}>
+                      <MessageSquare className="w-4 h-4 mr-1" />
+                      Chat
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      navigate(`/call/${friend.id}?caller=true`)
+                    }}>
+                      <Video className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Link to={`/chat/${friend.id}`}>
-                    <button className="w-10 h-10 rounded-xl bg-brand-teal/20 hover:bg-brand-teal flex items-center justify-center transition-colors" title="Chat">
-                      <MessageCircle size={18} className="text-brand-sky" />
-                    </button>
-                  </Link>
-                  <Link to={`/call/${friend.id}`}>
-                    <button className="w-10 h-10 rounded-xl bg-brand-orange/20 hover:bg-brand-orange flex items-center justify-center transition-colors" title="Videochamada">
-                      <Video size={18} className="text-brand-orange" />
-                    </button>
-                  </Link>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

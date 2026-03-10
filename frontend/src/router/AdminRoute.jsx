@@ -1,10 +1,11 @@
-import { Navigate, Outlet } from 'react-router-dom'
-import { useAuthStore } from '../store/auth.store'
+import { Navigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/auth.store'
 
-export function AdminRoute() {
-  const usuario = useAuthStore((s) => s.usuario)
+export default function AdminRoute({ children }) {
+  const { user, token } = useAuthStore()
 
-  if (usuario?.role !== 'ADMIN') return <Navigate to="/home" replace />
+  if (!token || !user) return <Navigate to="/login" replace />
+  if (user.role !== 'ADMIN') return <Navigate to="/home" replace />
 
-  return <Outlet />
+  return children
 }
