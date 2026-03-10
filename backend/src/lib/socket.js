@@ -77,19 +77,21 @@ export function initSocket(httpServer, clientOrigin) {
     });
 
     // Enviar mensagem (persiste no banco e retransmite para a sala)
-    socket.on("chat:message", async ({ friendId, text }) => {
-      if (!text?.trim() || !friendId) return;
+    socket.on("chat:message", async ({ friendId, text, imageUrl }) => {
+      const trimmedText = text?.trim() || null;
+      if ((!trimmedText && !imageUrl) || !friendId) return;
 
       const roomId = getRoomId(userId, friendId);
 
       try {
         const message = await prisma.message.create({
-          data: { roomId, senderId: userId, text: text.trim() },
+          data: { roomId, senderId: userId, text: trimmedText, imageUrl: imageUrl || null },
           select: {
             id: true,
             roomId: true,
             senderId: true,
             text: true,
+            imageUrl: true,
             readAt: true,
             createdAt: true,
           },

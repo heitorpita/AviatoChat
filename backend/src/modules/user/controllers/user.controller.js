@@ -139,17 +139,13 @@ export const getMe = async (req, res, next) => {
 };
 
 // GET /api/users/chat-users  [autenticarToken]
-// Retorna usuários com idiomas mutuamente compatíveis (troca de idiomas)
+// Retorna todos os usuários onboarded que ainda não são amigos
 export const getUsersToChat = async (req, res, next) => {
   try {
     const eu = await prisma.user.findUnique({
       where: { id: req.usuario.id },
-      select: { nativeLanguage: true, learningLanguage: true, friends: { select: { id: true } } },
+      select: { friends: { select: { id: true } } },
     });
-
-    if (!eu.nativeLanguage || !eu.learningLanguage) {
-      return res.status(400).json({ erro: "Complete o onboarding antes de buscar usuários" });
-    }
 
     const amigosIds = eu.friends.map((f) => f.id);
 
@@ -158,8 +154,6 @@ export const getUsersToChat = async (req, res, next) => {
         AND: [
           { id: { not: req.usuario.id } },
           { id: { notIn: amigosIds } },
-          { nativeLanguage: eu.learningLanguage },
-          { learningLanguage: eu.nativeLanguage },
           { isOnboarded: true },
         ],
       },

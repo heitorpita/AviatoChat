@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Globe, AlertCircle } from 'lucide-react'
+import { Globe, AlertCircle, Camera, Loader2 } from 'lucide-react'
 import { onboard } from '@/api/auth.api'
+import { uploadFile } from '@/api/upload.api'
 import { useAuthStore } from '@/store/auth.store'
 
 const LANGUAGES = [
@@ -25,9 +26,12 @@ export default function OnboardingPage() {
     profilePic: user?.profilePic || '',
     location: user?.location || '',
   })
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [preview, setPreview] = useState(user?.profilePic || null)
+  const [uploading, setUploading] = useState(false)
 
   const mutation = useMutation({
-    mutationFn: () => onboard(form),
+    mutationFn: (data) => onboard(data),
     onSuccess: ({ data }) => {
       setAuth(data.usuario, token)
       navigate('/home')
@@ -38,6 +42,32 @@ export default function OnboardingPage() {
     return (value) => setForm((prev) => ({ ...prev, [field]: typeof value === 'string' ? value : value.target.value }))
   }
 
+  function handleFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSelectedFile(file)
+    setPreview(URL.createObjectURL(file))
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    let profilePic = form.profilePic
+    if (selectedFile) {
+      setUploading(true)
+      try {
+        profilePic = await uploadFile(selectedFile)
+      } catch {
+        // keep old value
+      } finally {
+        setUploading(false)
+      }
+    }
+    mutation.mutate({ ...form, profilePic })
+  }
+
+  const initials = user?.fullName?.[0]?.toUpperCase() || '?'
+  const isPending = uploading || mutation.isPending
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#8ecae6] via-[#219ebc] to-[#023047] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
@@ -46,12 +76,30 @@ export default function OnboardingPage() {
           <span className="text-white text-3xl font-bold">AviatoChat</span>
         </div>
 
-        <div className="bg-white rounded-2xl p-8 shadow-2xl">
+        <div className="bg-white rounded-2xl p-6 md:p-8 shadow-2xl">
           <h1 className="text-2xl font-bold text-[#023047] mb-1">Configure seu perfil</h1>
           <p className="text-[#219ebc] mb-6">Conte-nos sobre você para encontrar parceiros ideais</p>
 
-          <form onSubmit={(e) => { e.preventDefault(); mutation.mutate() }} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Avatar com upload */}
+            <div className="flex justify-center mb-2">
+              <label className="relative cursor-pointer group">
+                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-[#8ecae6] bg-[#219ebc] flex items-center justify-center">
+                  {preview ? (
+                    <img src={preview} alt="foto" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white text-3xl font-bold">{initials}</span>
+                  )}
+                </div>
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="w-6 h-6 text-white" />
+                </div>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+              </label>
+            </div>
+            <p className="text-xs text-center text-muted-foreground -mt-2 mb-2">Clique para adicionar foto</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Idioma Nativo</Label>
                 <Select value={form.nativeLanguage} onValueChange={set('nativeLanguage')}>
@@ -89,11 +137,6 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <Label htmlFor="profilePic">URL da Foto de Perfil</Label>
-              <Input id="profilePic" type="url" placeholder="https://..." value={form.profilePic} onChange={set('profilePic')} className="mt-1" />
-            </div>
-
-            <div>
               <Label htmlFor="location">Localização</Label>
               <Input id="location" type="text" placeholder="São Paulo, Brasil" value={form.location} onChange={set('location')} className="mt-1" />
             </div>
@@ -108,9 +151,9 @@ export default function OnboardingPage() {
             <Button
               type="submit"
               className="w-full bg-[#ffb703] hover:bg-[#fb8500] text-[#023047] font-semibold"
-              disabled={mutation.isPending || !form.nativeLanguage || !form.learningLanguage}
+              disabled={isPending || !form.nativeLanguage || !form.learningLanguage}
             >
-              {mutation.isPending ? 'Salvando...' : 'Concluir configuração →'}
+              {isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Concluir configuração →'}
             </Button>
           </form>
         </div>

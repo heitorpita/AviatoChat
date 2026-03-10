@@ -27,8 +27,10 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar desktop */}
       <Sidebar />
-      <main className="flex-1 overflow-auto">
+      {/* Conteúdo principal — pb-16 no mobile para não sobrepor a bottom nav */}
+      <main className="flex-1 overflow-auto pb-16 md:pb-0">
         <Outlet />
       </main>
       <IncomingCallModal />

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Send, Video, Globe, MessageSquare, Loader2, CheckCheck } from 'lucide-react'
+import { Send, Video, Globe, MessageSquare, Loader2, CheckCheck, Image as ImageIcon, ArrowLeft } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useSocketStore } from '@/store/socket.store'
 import { getFriends } from '@/api/users.api'
 import { getMessages } from '@/api/chat.api'
+import { uploadFile } from '@/api/upload.api'
 import { useChatSocket } from '@/hooks/useSocket'
 
 export default function ChatPage() {
@@ -15,13 +16,15 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { onlineUsers } = useSocketStore()
-  const queryClient = useQueryClient()
 
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
-  const [isTyping, setIsTyping] = useState(false) // amigo digitando
+  const [isTyping, setIsTyping] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const typingTimerRef = useRef(null)
   const bottomRef = useRef(null)
+  const imageInputRef = useRef(null)
 
   // Lista de amigos (sidebar)
   const { data: friendsData } = useQuery({
@@ -31,15 +34,29 @@ export default function ChatPage() {
   const friends = friendsData?.amigos || []
   const activeFriend = friends.find((f) => f.id === friendId)
 
-  // Histórico de mensagens
-  const { isLoading: loadingMessages } = useQuery({
+  // Histórico de mensagens — staleTime: 0 garante refetch ao trocar de amigo
+  const { data: messagesData, isLoading: loadingMessages } = useQuery({
     queryKey: ['messages', friendId],
     queryFn: () => getMessages(friendId).then((r) => r.data),
     enabled: !!friendId,
-    onSuccess: (data) => setMessages(data.mensagens || []),
+    staleTime: 0,
   })
 
-  // Socket handlers (memoizados para evitar re-subscribe)
+  // Sincroniza dados da query com o estado local (substitui onSuccess removido no TanStack v5)
+  useEffect(() => {
+    if (messagesData) {
+      setMessages(messagesData.mensagens || [])
+    }
+  }, [messagesData])
+
+  // Reset ao trocar de conversa
+  useEffect(() => {
+    setMessages([])
+    setIsTyping(false)
+    setText('')
+  }, [friendId])
+
+  // Socket handlers
   const handleMessage = useCallback((msg) => {
     setMessages((prev) => [...prev, msg])
   }, [])
@@ -71,13 +88,10 @@ export default function ChatPage() {
     if (friendId) markRead()
   }, [friendId, markRead])
 
-  // Reset ao trocar de conversa
-  useEffect(() => {
-    setMessages([])
-    setIsTyping(false)
-    const cached = queryClient.getQueryData(['messages', friendId])
-    if (cached) setMessages(cached.mensagens || [])
-  }, [friendId, queryClient])
+  function handleSelectFriend(friend) {
+    navigate(`/chat/${friend.id}`)
+    setShowSidebar(false) // mobile: vai para o chat
+  }
 
   function handleInput(e) {
     setText(e.target.value)
@@ -90,10 +104,25 @@ export default function ChatPage() {
     e.preventDefault()
     const trimmed = text.trim()
     if (!trimmed || !friendId) return
-    sendMessage(trimmed)
+    sendMessage({ text: trimmed })
     setText('')
     sendTyping(false)
     clearTimeout(typingTimerRef.current)
+  }
+
+  async function handleImageSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file || !friendId) return
+    e.target.value = ''
+    setUploadingImage(true)
+    try {
+      const imageUrl = await uploadFile(file)
+      sendMessage({ imageUrl })
+    } catch {
+      // silently fail
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   function formatTime(dateStr) {
@@ -101,9 +130,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex overflow-hidden">
       {/* Sidebar de conversas */}
-      <div className="w-72 border-r border-border bg-card flex flex-col shrink-0">
+      <div className={`border-r border-border bg-card flex-col shrink-0 w-full md:w-72 ${showSidebar ? 'flex' : 'hidden'} md:flex`}>
         <div className="p-4 border-b border-border">
           <h2 className="font-semibold text-foreground">Mensagens</h2>
         </div>
@@ -120,7 +149,7 @@ export default function ChatPage() {
               return (
                 <button
                   key={friend.id}
-                  onClick={() => navigate(`/chat/${friend.id}`)}
+                  onClick={() => handleSelectFriend(friend)}
                   className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left ${active ? 'bg-muted/70 border-r-2 border-[#219ebc]' : ''}`}
                 >
                   <div className="relative shrink-0">
@@ -146,17 +175,23 @@ export default function ChatPage() {
 
       {/* Área de chat */}
       {!friendId ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex-1 hidden md:flex items-center justify-center text-center text-muted-foreground">
           <div>
             <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p>Selecione uma conversa para começar</p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col">
+        <div className={`flex-1 flex-col ${!showSidebar ? 'flex' : 'hidden'} md:flex`}>
           {/* Header do chat */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+            <div className="flex items-center gap-2">
+              <button
+                className="md:hidden text-muted-foreground hover:text-foreground"
+                onClick={() => setShowSidebar(true)}
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
               <div className="relative">
                 {activeFriend?.profilePic ? (
                   <img src={activeFriend.profilePic} alt={activeFriend.fullName} className="w-9 h-9 rounded-full object-cover" />
@@ -184,7 +219,7 @@ export default function ChatPage() {
               className="flex items-center gap-1.5 text-[#219ebc] border-[#219ebc] hover:bg-[#219ebc] hover:text-white"
             >
               <Video className="w-4 h-4" />
-              Ligar
+              <span className="hidden sm:inline">Ligar</span>
             </Button>
           </div>
 
@@ -203,8 +238,16 @@ export default function ChatPage() {
                 const mine = msg.senderId === user?.id
                 return (
                   <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] px-4 py-2 rounded-2xl text-sm ${mine ? 'bg-[#219ebc] text-white rounded-br-sm' : 'bg-white text-foreground border border-border rounded-bl-sm shadow-sm'}`}>
-                      <p>{msg.text}</p>
+                    <div className={`max-w-[80%] sm:max-w-[70%] px-4 py-2 rounded-2xl text-sm ${mine ? 'bg-[#219ebc] text-white rounded-br-sm' : 'bg-white text-foreground border border-border rounded-bl-sm shadow-sm'}`}>
+                      {msg.imageUrl && (
+                        <img
+                          src={msg.imageUrl}
+                          alt="imagem"
+                          className="max-w-full rounded-lg mb-1 cursor-pointer"
+                          onClick={() => window.open(msg.imageUrl, '_blank')}
+                        />
+                      )}
+                      {msg.text && <p>{msg.text}</p>}
                       <div className={`flex items-center gap-1 mt-1 text-[10px] ${mine ? 'text-white/70 justify-end' : 'text-muted-foreground'}`}>
                         <span>{formatTime(msg.createdAt)}</span>
                         {mine && (
@@ -217,7 +260,6 @@ export default function ChatPage() {
               })
             )}
 
-            {/* Typing indicator */}
             {isTyping && (
               <div className="flex justify-start">
                 <div className="bg-white border border-border rounded-2xl rounded-bl-sm px-4 py-2 shadow-sm">
@@ -239,6 +281,21 @@ export default function ChatPage() {
 
           {/* Input de mensagem */}
           <form onSubmit={handleSend} className="flex items-center gap-2 px-4 py-3 border-t border-border bg-card">
+            <label className={`cursor-pointer shrink-0 text-[#219ebc] hover:text-[#023047] transition-colors ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+              {uploadingImage ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <ImageIcon className="w-5 h-5" />
+              )}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+                disabled={uploadingImage}
+              />
+            </label>
             <Input
               value={text}
               onChange={handleInput}
