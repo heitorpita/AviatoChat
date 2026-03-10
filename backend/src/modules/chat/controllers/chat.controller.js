@@ -16,7 +16,7 @@ export async function getMessages(req, res, next) {
 
     const roomId = getRoomId(userId, friendId);
 
-    const messages = await prisma.message.findMany({
+    const mensagens = await prisma.message.findMany({
       where: { roomId },
       orderBy: { createdAt: "desc" },
       take: limit,
@@ -28,6 +28,7 @@ export async function getMessages(req, res, next) {
         id: true,
         senderId: true,
         text: true,
+        imageUrl: true,
         readAt: true,
         createdAt: true,
       },
@@ -36,8 +37,8 @@ export async function getMessages(req, res, next) {
     // Retorna do mais antigo para o mais recente (ordem natural para o chat)
     res.status(200).json({
       sucesso: true,
-      messages: messages.reverse(),
-      nextCursor: messages.length === limit ? messages[0]?.id : null,
+      mensagens: mensagens.reverse(),
+      nextCursor: mensagens.length === limit ? mensagens[0]?.id : null,
     });
   } catch (error) {
     next(error);

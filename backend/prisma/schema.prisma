@@ -46,7 +46,8 @@ model Message {
   id        String    @id @default(cuid())
   roomId    String
   senderId  String
-  text      String
+  text      String?
+  imageUrl  String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
 

@@ -21,7 +21,7 @@ export function useChatSocket({ friendId, onMessage, onTyping, onRead }) {
   }, [socket, friendId, onMessage, onTyping, onRead])
 
   const sendMessage = useCallback(
-    (text) => socket?.emit('chat:message', { friendId, text }),
+    ({ text, imageUrl } = {}) => socket?.emit('chat:message', { friendId, text, imageUrl }),
     [socket, friendId]
   )
 
