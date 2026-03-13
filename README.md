@@ -269,11 +269,58 @@ GET    /uploads/:filename          Servir imagem enviada
 
 ## Deploy (Coolify)
 
-O `postinstall` do backend executa automaticamente:
+### Infraestrutura
+
+Hospedado no **Coolify** — resource group: `aviatochat-production`
+
+| Resource | Tipo | Domínio |
+|----------|------|---------|
+| `aviatochat-backend` | Application (Node.js) | https://api.aviatochat.com |
+| `aviatochat-frontend` | Application (Static/Vite) | https://aviatochat.com |
+| `aviatochat-db` | Database (PostgreSQL) | interno ao Coolify |
+
+### Variáveis de ambiente em produção
+
+**Backend (`aviatochat-backend`)**
+```env
+NODE_ENV=production
+PORT=5001
+DATABASE_URL=<gerado pelo Coolify ao linkar o banco>
+JWT_SECRET_KEY=<segredo forte>
+CLIENT_ORIGIN=https://aviatochat.com
+```
+
+**Frontend (`aviatochat-frontend`)**
+```env
+VITE_API_URL=https://api.aviatochat.com/api
+VITE_SOCKET_URL=https://api.aviatochat.com
+```
+
+### Build & Deploy
+
+**Backend** — start command:
+```bash
+node index.js
+```
+
+**Frontend** — build command / output:
+```bash
+npm run build   # saída: dist/
+```
+
+### Schema do banco (automático)
+
+O `postinstall` do backend executa automaticamente ao deploy:
 ```bash
 prisma generate && prisma db push
 ```
 Não é necessário acesso manual ao container para aplicar mudanças de schema.
+
+### Observações
+- O banco PostgreSQL fica **interno** ao Coolify (não exposto publicamente)
+- CORS em produção aceita apenas `CLIENT_ORIGIN` — em dev aceita qualquer origem
+- Imagens de upload ficam em `backend/uploads/` dentro do container (sem volume persistente por enquanto — ao re-deploy os uploads são perdidos)
+- Socket.IO usa o mesmo domínio do backend (`api.aviatochat.com`) — o Coolify precisa ter **proxy WebSocket habilitado** no recurso do backend
 
 ---
 
