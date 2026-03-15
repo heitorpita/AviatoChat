@@ -2,13 +2,26 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSocketStore } from '@/store/socket.store'
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    ...(import.meta.env.VITE_TURN_URL
+      ? [
+          {
+            urls: import.meta.env.VITE_TURN_URL,
+            username: import.meta.env.VITE_TURN_USERNAME,
+            credential: import.meta.env.VITE_TURN_CREDENTIAL,
+          },
+        ]
+      : []),
+  ],
 }
 
 export function useWebRTC({ friendId, isCaller }) {
   const { socket } = useSocketStore()
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
+  const iceCandidateQueueRef = useRef([])
+  const remoteDescReadyRef = useRef(false)
 
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
@@ -19,10 +32,32 @@ export function useWebRTC({ friendId, isCaller }) {
     pcRef.current = null
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
+    iceCandidateQueueRef.current = []
+    remoteDescReadyRef.current = false
     setLocalStream(null)
     setRemoteStream(null)
     setCallState('ended')
   }, [])
+
+  const flushIceCandidateQueue = useCallback(async () => {
+    const queue = iceCandidateQueueRef.current.splice(0)
+    for (const candidate of queue) {
+      try {
+        await pcRef.current?.addIceCandidate(candidate)
+      } catch (err) {
+        console.warn('[WebRTC] Falha ao adicionar ICE candidate da queue:', err)
+      }
+    }
+  }, [])
+
+  const setRemoteDescriptionAndFlush = useCallback(
+    async (sdp) => {
+      await pcRef.current.setRemoteDescription(sdp)
+      remoteDescReadyRef.current = true
+      await flushIceCandidateQueue()
+    },
+    [flushIceCandidateQueue]
+  )
 
   useEffect(() => {
     if (!socket || !friendId) return
@@ -56,7 +91,6 @@ export function useWebRTC({ friendId, isCaller }) {
       }
 
       if (isCaller) {
-        // Sinalizar início da chamada e aguardar aceitação
         socket.emit('call:request', { targetUserId: friendId })
         socket.once('call:accepted', async () => {
           const offer = await pc.createOffer()
@@ -71,7 +105,7 @@ export function useWebRTC({ friendId, isCaller }) {
     // Receber offer (callee)
     socket.on('webrtc:offer', async ({ sdp }) => {
       if (!pcRef.current) return
-      await pcRef.current.setRemoteDescription(sdp)
+      await setRemoteDescriptionAndFlush(sdp)
       const answer = await pcRef.current.createAnswer()
       await pcRef.current.setLocalDescription(answer)
       socket.emit('webrtc:answer', { targetUserId: friendId, sdp: answer })
@@ -79,14 +113,21 @@ export function useWebRTC({ friendId, isCaller }) {
 
     // Receber answer (caller)
     socket.on('webrtc:answer', async ({ sdp }) => {
-      await pcRef.current?.setRemoteDescription(sdp)
+      if (!pcRef.current) return
+      await setRemoteDescriptionAndFlush(sdp)
     })
 
     // Receber ICE candidates
     socket.on('webrtc:ice-candidate', async ({ candidate }) => {
+      if (!remoteDescReadyRef.current) {
+        iceCandidateQueueRef.current.push(candidate)
+        return
+      }
       try {
         await pcRef.current?.addIceCandidate(candidate)
-      } catch {}
+      } catch (err) {
+        console.warn('[WebRTC] Falha ao adicionar ICE candidate:', err)
+      }
     })
 
     // Chamada encerrada pelo outro lado
@@ -99,7 +140,7 @@ export function useWebRTC({ friendId, isCaller }) {
       socket.off('call:ended')
       cleanup()
     }
-  }, [socket, friendId, isCaller, cleanup])
+  }, [socket, friendId, isCaller, cleanup, setRemoteDescriptionAndFlush])
 
   const endCall = useCallback(() => {
     socket?.emit('call:end', { targetUserId: friendId })

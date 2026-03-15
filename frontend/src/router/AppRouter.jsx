@@ -15,6 +15,7 @@ import ProfilePage from '@/pages/ProfilePage'
 import CallPage from '@/pages/CallPage'
 import AdminPage from '@/pages/AdminPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import AIChatPage from '@/pages/AIChatPage'
 
 export default function AppRouter() {
   return (
@@ -35,6 +36,7 @@ export default function AppRouter() {
           }
         >
           <Route path="/home" element={<HomePage />} />
+          <Route path="/chat/ai" element={<AIChatPage />} />
           <Route path="/chat/:friendId?" element={<ChatPage />} />
           <Route path="/friends" element={<FriendsPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />

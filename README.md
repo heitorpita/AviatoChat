@@ -278,6 +278,8 @@ Hospedado no **Coolify** — resource group: `aviatochat-production`
 | `aviatochat-backend` | Application (Node.js) | https://api.aviatochat.com |
 | `aviatochat-frontend` | Application (Static/Vite) | https://aviatochat.com |
 | `aviatochat-db` | Database (PostgreSQL) | interno ao Coolify |
+| `ollama` | Service (Docker) | interno — `http://ollama:11434` |
+| `coturn` | Service (Docker custom) | VPS_IP:3478 TCP+UDP |
 
 ### Variáveis de ambiente em produção
 
@@ -288,12 +290,20 @@ PORT=5001
 DATABASE_URL=<gerado pelo Coolify ao linkar o banco>
 JWT_SECRET_KEY=<segredo forte>
 CLIENT_ORIGIN=https://aviatochat.com
+# AI Bot
+AI_BOT_USER_ID=ai-professor-ava-001
+OLLAMA_URL=http://ollama:11434
+OLLAMA_MODEL=llama3.2:3b
 ```
 
 **Frontend (`aviatochat-frontend`)**
 ```env
 VITE_API_URL=https://api.aviatochat.com/api
 VITE_SOCKET_URL=https://api.aviatochat.com
+# TURN server (WebRTC entre redes diferentes)
+VITE_TURN_URL=turn:VPS_IP:3478
+VITE_TURN_USERNAME=aviato
+VITE_TURN_CREDENTIAL=<senha_forte>
 ```
 
 ### Build & Deploy
@@ -316,11 +326,40 @@ prisma generate && prisma db push
 ```
 Não é necessário acesso manual ao container para aplicar mudanças de schema.
 
+### Primeiro deploy com bot de IA
+
+Após o deploy do backend, criar o usuário bot uma vez:
+```bash
+# Via terminal do container no Coolify
+npm run seed:bot
+```
+
+### Configurar Coturn (TURN server)
+
+Deploy no Coolify como service Docker custom (`image: coturn/coturn`):
+- Porta 3478 TCP **e** UDP precisam estar abertas no firewall da VPS
+- Configuração mínima `turnserver.conf`:
+  ```
+  lt-cred-mech
+  user=aviato:<senha_forte>
+  realm=aviatochat.com
+  ```
+
+### Configurar Ollama
+
+Deploy no Coolify via template **"Ollama with Open WebUI"** ou image `ollama/ollama`:
+- Após o deploy, fazer pull do modelo via terminal do container:
+  ```bash
+  ollama pull llama3.2:3b
+  ```
+- O modelo ocupa ~2GB de armazenamento e ~2GB de RAM em execução
+
 ### Observações
 - O banco PostgreSQL fica **interno** ao Coolify (não exposto publicamente)
 - CORS em produção aceita apenas `CLIENT_ORIGIN` — em dev aceita qualquer origem
 - Imagens de upload ficam em `backend/uploads/` dentro do container (sem volume persistente por enquanto — ao re-deploy os uploads são perdidos)
 - Socket.IO usa o mesmo domínio do backend (`api.aviatochat.com`) — o Coolify precisa ter **proxy WebSocket habilitado** no recurso do backend
+- O bot `Prof. Ava` aparece sempre como online e responde em 1–3s simulando digitação
 
 ---
 

@@ -1,10 +1,55 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
+import { callOllama } from "./ai.js";
+
+const BOT_USER_ID = process.env.AI_BOT_USER_ID || "ai-professor-ava-001";
 
 // Registry de usuários online: userId → Set de socketIds
 // Suporta múltiplas abas abertas pelo mesmo usuário
 const onlineUsers = new Map();
+
+/**
+ * Gera resposta do bot Prof. Ava com simulação de digitação.
+ */
+async function handleBotReply({ io, roomId }) {
+  // Buscar histórico recente para contexto (últimas 20 mensagens)
+  const history = await prisma.message.findMany({
+    where: { roomId },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: { senderId: true, text: true },
+  });
+
+  const contextMessages = history
+    .reverse()
+    .filter((m) => m.text)
+    .map((m) => ({
+      role: m.senderId === BOT_USER_ID ? "assistant" : "user",
+      content: m.text,
+    }));
+
+  // Simular digitação (1–3 segundos)
+  io.to(roomId).emit("chat:typing", { senderId: BOT_USER_ID, isTyping: true });
+  const typingDelay = 1000 + Math.random() * 2000;
+
+  const [botText] = await Promise.all([
+    callOllama(contextMessages),
+    new Promise((r) => setTimeout(r, typingDelay)),
+  ]);
+
+  io.to(roomId).emit("chat:typing", { senderId: BOT_USER_ID, isTyping: false });
+
+  const botMessage = await prisma.message.create({
+    data: { roomId, senderId: BOT_USER_ID, text: botText },
+    select: {
+      id: true, roomId: true, senderId: true,
+      text: true, imageUrl: true, readAt: true, createdAt: true,
+    },
+  });
+
+  io.to(roomId).emit("chat:message", botMessage);
+}
 
 /**
  * Gera o roomId determinístico entre dois usuários.
@@ -53,7 +98,7 @@ export function initSocket(httpServer, clientOrigin) {
     onlineUsers.get(userId).add(socket.id);
 
     // Broadcast da lista de usuários online
-    io.emit("users:online", Array.from(onlineUsers.keys()));
+    io.emit("users:online", [BOT_USER_ID, ...Array.from(onlineUsers.keys())]);
 
     console.log(`[Socket] Conectado: ${userId} (${socket.id})`);
 
@@ -98,6 +143,13 @@ export function initSocket(httpServer, clientOrigin) {
         });
 
         io.to(roomId).emit("chat:message", message);
+
+        // ── Resposta do bot de IA ───────────────────────────────────
+        if (friendId === BOT_USER_ID && trimmedText) {
+          handleBotReply({ io, roomId }).catch((err) =>
+            console.error("[Bot] Erro ao responder:", err.message)
+          );
+        }
       } catch (err) {
         console.error("[Socket] chat:message erro:", err.message);
         socket.emit("chat:error", { message: "Erro ao salvar mensagem" });
@@ -176,7 +228,7 @@ export function initSocket(httpServer, clientOrigin) {
           onlineUsers.delete(userId);
         }
       }
-      io.emit("users:online", Array.from(onlineUsers.keys()));
+      io.emit("users:online", [BOT_USER_ID, ...Array.from(onlineUsers.keys())]);
       console.log(`[Socket] Desconectado: ${userId} (${socket.id})`);
     });
   });
