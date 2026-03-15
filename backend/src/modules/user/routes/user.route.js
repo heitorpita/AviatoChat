@@ -8,6 +8,7 @@ import {
   getUsersToChat,
   getFriends,
   getAllUsers,
+  getAiBot,
 } from "../controllers/user.controller.js";
 import { autenticarToken } from "../../../middlewares/authentication.middleware.js";
 import autorization from "../../../middlewares/autorization.middleware.js";
@@ -24,6 +25,7 @@ router.put("/onboard", autenticarToken, onboard);
 router.get("/me", autenticarToken, getMe);
 router.get("/chat-users", autenticarToken, getUsersToChat);
 router.get("/friends", autenticarToken, getFriends);
+router.get("/ai-bot", autenticarToken, getAiBot);
 
 // ─── Rotas admin (requer JWT + perfil admin) ──────────────────────
 router.get("/", autenticarToken, autorization.admin, getAllUsers);

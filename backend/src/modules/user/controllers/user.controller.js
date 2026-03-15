@@ -200,6 +200,33 @@ export const getFriends = async (req, res, next) => {
   }
 };
 
+// GET /api/users/ai-bot  [autenticarToken]
+export const getAiBot = async (_req, res, next) => {
+  try {
+    const botId = process.env.AI_BOT_USER_ID || "ai-professor-ava-001";
+    const bot = await prisma.user.findUnique({
+      where: { id: botId },
+      select: {
+        id: true,
+        fullName: true,
+        profilePic: true,
+        bio: true,
+        nativeLanguage: true,
+        learningLanguage: true,
+        isBot: true,
+      },
+    });
+
+    if (!bot) {
+      return res.status(404).json({ erro: "Bot não encontrado. Execute npm run seed:bot no backend." });
+    }
+
+    res.status(200).json({ sucesso: true, bot });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // GET /api/users  [autenticarToken + admin]
 export const getAllUsers = async (_req, res, next) => {
   try {
